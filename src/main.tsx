@@ -1,10 +1,7 @@
 import { View } from "react-native";
 import { Text } from "react-native";
+import HomeScreen from "./presentation/screens/HomeScreen";
 
 export default function Main() {
-  return (
-    <View>
-      <Text>Gestor de Presupuestos Jerárquico</Text>
-    </View>
-  );
+  return <HomeScreen />;
 }

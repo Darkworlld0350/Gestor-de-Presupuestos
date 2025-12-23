@@ -1,35 +1,24 @@
 import { View } from "react-native";
-import { BudgetItem } from "../molecules/BudgetItem";
 import { BudgetNode } from "../../../domain/entities/BudgetNode";
-import { useBudgetTreeViewModel } from "../../../presentation/viewmodels/BudgetTreeViewModel";
+import { BudgetItem } from "../molecules/BudgetItem";
+import { CalculateTotalUseCase } from "../../../domain/usecases/CalculateTotalUseCase";
 
-type Props = {
-  nodes: BudgetNode[];
-  level?: number;
-};
+interface Props {
+  node: BudgetNode; // 👈 node, NO nodes
+}
 
-export const BudgetTree = ({ nodes, level = 0 }: Props) => {
-  const { totalsMap } = useBudgetTreeViewModel(nodes);
+const calculateTotalUseCase = new CalculateTotalUseCase();
+
+export function BudgetTree({ node }: Props) {
+  const total = calculateTotalUseCase.execute(node);
 
   return (
-    <>
-      {nodes.map((node) => (
-        <View key={node.id}>
-          <View style={{ paddingLeft: level * 16 }}>
-            <BudgetItem
-              name={node.name}
-              total={totalsMap.get(node.id) ?? node.amount}
-            />
-          </View>
+    <View>
+      <BudgetItem name={node.name} total={total} />
 
-          {node.children.length > 0 && (
-            <BudgetTree
-              nodes={node.children}
-              level={level + 1}
-            />
-          )}
-        </View>
+      {node.children?.map((child) => (
+        <BudgetTree key={child.id} node={child} />
       ))}
-    </>
+    </View>
   );
-};
+}
