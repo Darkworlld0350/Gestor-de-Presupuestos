@@ -1,5 +1,13 @@
-import { Text } from "react-native";
+import { Text, TextProps } from "react-native";
 
-export const AppText = ({ children }: any) => (
-  <Text style={{ fontSize: 16 }}>{children}</Text>
-);
+interface Props extends TextProps {
+  children: React.ReactNode;
+}
+
+export function AppText({ children, style, ...props }: Props) {
+  return (
+    <Text style={style} {...props}>
+      {children}
+    </Text>
+  );
+}
