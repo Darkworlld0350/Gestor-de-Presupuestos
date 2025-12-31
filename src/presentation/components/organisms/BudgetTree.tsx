@@ -1,61 +1,57 @@
-import { View, StyleSheet } from "react-native";
+import { View, TouchableOpacity } from "react-native";
+import { useState } from "react";
 import { BudgetNode } from "../../../domain/entities/BudgetNode";
 import { BudgetItem } from "../molecules/BudgetItem";
-import { CalculateTotalUseCase } from "../../../domain/usecases/CalculateTotalUseCase";
+import { AppText } from "../atoms/AppText";
 
 interface Props {
   node: BudgetNode;
   level?: number;
-  onAmountChange: (id: string, value: number) => void;
+  onAmountChange: (id: string, v: number) => void;
+  onNameChange: (id: string, name: string) => void;
+  onAddChild: (id: string) => void;
 }
-
-const calculateTotalUseCase = new CalculateTotalUseCase();
 
 export function BudgetTree({
   node,
   level = 0,
   onAmountChange,
+  onNameChange,
+  onAddChild,
 }: Props) {
+  const [collapsed, setCollapsed] = useState(false);
   const isLeaf = node.children.length === 0;
-  const total = calculateTotalUseCase.execute(node);
 
   return (
-    <View style={styles.row}>
-      {/* Línea vertical */}
-      {level > 0 && (
-        <View style={[styles.line, { left: level * 16 - 8 }]} />
-      )}
-
-      <View style={{ marginLeft: level * 16 }}>
+    <View style={{ marginLeft: level * 16 }}>
+      <TouchableOpacity
+        disabled={isLeaf}
+        onPress={() => setCollapsed(!collapsed)}
+      >
         <BudgetItem
           name={node.name}
-          total={isLeaf ? node.amount : total} // 🔑 CLAVE
+          amount={node.amount}
           isLeaf={isLeaf}
-          onChange={(value) => onAmountChange(node.id, value)}
+          onNameChange={(n) => onNameChange(node.id, n)}
+          onAmountChange={(v) => onAmountChange(node.id, v)}
         />
+      </TouchableOpacity>
 
-        {node.children.map((child) => (
+      <TouchableOpacity onPress={() => onAddChild(node.id)}>
+        <AppText>➕ Añadir subcategoría</AppText>
+      </TouchableOpacity>
+
+      {!collapsed &&
+        node.children.map((c) => (
           <BudgetTree
-            key={child.id}
-            node={child}
+            key={c.id}
+            node={c}
             level={level + 1}
             onAmountChange={onAmountChange}
+            onNameChange={onNameChange}
+            onAddChild={onAddChild}
           />
         ))}
-      </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    position: "relative",
-  },
-  line: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: "#ccc",
-  },
-});

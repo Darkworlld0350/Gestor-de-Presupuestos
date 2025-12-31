@@ -3,52 +3,44 @@ import { AppText } from "../atoms/AppText";
 
 interface Props {
   name: string;
-  total: number;
-  isLeaf: boolean; // 🔴 ya NO es opcional
-  onChange?: (value: number) => void;
+  amount: number;
+  isLeaf: boolean;
+  onAmountChange: (v: number) => void;
+  onNameChange: (name: string) => void;
 }
 
 export function BudgetItem({
   name,
-  total,
+  amount,
   isLeaf,
-  onChange,
+  onAmountChange,
+  onNameChange,
 }: Props) {
   return (
-    <View style={styles.container}>
-      <AppText style={styles.label}>{name}:</AppText>
+    <View style={styles.row}>
+      <TextInput
+        value={name}
+        onChangeText={onNameChange}
+        style={styles.name}
+      />
 
       {isLeaf ? (
         <TextInput
-          style={styles.input}
+          value={String(amount)}
           keyboardType="numeric"
-          value={String(total)}
-          editable={true} // 🔑 importante en Android
-          onChangeText={(text) => onChange?.(Number(text) || 0)}
+          onChangeText={(t) => onAmountChange(Number(t) || 0)}
+          style={styles.amount}
         />
       ) : (
-        <AppText style={styles.total}>${total}</AppText>
+        <AppText style={styles.total}>${amount}</AppText>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 6,
-  },
-  label: {
-    width: 140,
-  },
-  input: {
-    borderBottomWidth: 1,
-    minWidth: 80,
-    textAlign: "right",
-    paddingVertical: 2,
-  },
-  total: {
-    fontWeight: "600",
-  },
+  row: { flexDirection: "row", alignItems: "center", marginVertical: 4 },
+  name: { flex: 1, borderBottomWidth: 1, marginRight: 8 },
+  amount: { width: 80, borderBottomWidth: 1, textAlign: "right" },
+  total: { fontWeight: "600" },
 });
