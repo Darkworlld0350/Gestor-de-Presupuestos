@@ -22,9 +22,7 @@ export function updateNodeName(
   id: string,
   name: string
 ): BudgetNode {
-  if (node.id === id) {
-    return { ...node, name };
-  }
+  if (node.id === id) return { ...node, name };
 
   return {
     ...node,
@@ -44,7 +42,7 @@ export function addChildNode(
       children: [
         ...node.children,
         {
-          id: `${parentId}.${node.children.length + 1}`,
+          id: `${node.id}.${node.children.length + 1}`,
           name: "Nueva categoría",
           amount: 0,
           children: [],

@@ -1,46 +1,51 @@
-import { View, TextInput, StyleSheet } from "react-native";
+import { View, TextInput } from "react-native";
 import { AppText } from "../atoms/AppText";
+import { budgetStyles } from "../../styles/budgetStyles";
 
 interface Props {
   name: string;
   amount: number;
   isLeaf: boolean;
+  collapsed?: boolean;
+  onNameChange: (v: string) => void;
   onAmountChange: (v: number) => void;
-  onNameChange: (name: string) => void;
 }
 
 export function BudgetItem({
   name,
   amount,
   isLeaf,
-  onAmountChange,
+  collapsed,
   onNameChange,
+  onAmountChange,
 }: Props) {
   return (
-    <View style={styles.row}>
+    <View style={budgetStyles.row}>
+      {/* Nombre */}
       <TextInput
         value={name}
         onChangeText={onNameChange}
-        style={styles.name}
+        placeholder="Categoría"
+        style={budgetStyles.nameInput}
       />
 
+      {/* Monto o total */}
       {isLeaf ? (
         <TextInput
           value={String(amount)}
           keyboardType="numeric"
           onChangeText={(t) => onAmountChange(Number(t) || 0)}
-          style={styles.amount}
+          placeholder="$0"
+          style={budgetStyles.amountInput}
         />
       ) : (
-        <AppText style={styles.total}>${amount}</AppText>
+        <AppText style={budgetStyles.total}>
+          ${amount}{" "}
+          <AppText style={budgetStyles.arrow}>
+            {collapsed ? "▶" : "▼"}
+          </AppText>
+        </AppText>
       )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", marginVertical: 4 },
-  name: { flex: 1, borderBottomWidth: 1, marginRight: 8 },
-  amount: { width: 80, borderBottomWidth: 1, textAlign: "right" },
-  total: { fontWeight: "600" },
-});
