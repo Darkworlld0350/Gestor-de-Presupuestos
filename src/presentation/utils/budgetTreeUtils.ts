@@ -1,5 +1,19 @@
 import { BudgetNode } from "../../domain/entities/BudgetNode";
 
+export function findNodeById(
+  node: BudgetNode,
+  id: string
+): BudgetNode | null {
+  if (node.id === id) return node;
+
+  for (const child of node.children) {
+    const found = findNodeById(child, id);
+    if (found) return found;
+  }
+
+  return null;
+}
+
 export function updateNodeAmount(
   node: BudgetNode,
   id: string,

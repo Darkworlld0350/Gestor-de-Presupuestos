@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  SafeAreaView,
   ScrollView,
   View,
   TouchableOpacity,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { BudgetTree } from "../components/organisms/BudgetTree";
+import { BudgetPieChart } from "../components/molecules/BudgetPieChart";
 import { BudgetNode } from "../../domain/entities/BudgetNode";
+
 import {
   updateNodeAmount,
   updateNodeName,
@@ -17,16 +19,20 @@ import {
 import { BudgetStorage } from "../../data/storage/BudgetStorage";
 import { LoadBudgetUseCase } from "../../domain/usecases/LoadBudgetUseCase";
 import { SaveBudgetUseCase } from "../../domain/usecases/SaveBudgetUseCase";
+import { GetPieChartDataUseCase } from "../../domain/usecases/GetPieChartDataUseCase";
 import { AppText } from "../components/atoms/AppText";
 
+// ---------------- USE CASES ----------------
 const storage = new BudgetStorage();
 const load = new LoadBudgetUseCase(storage);
 const save = new SaveBudgetUseCase(storage);
+const pieUC = new GetPieChartDataUseCase();
 
 export default function HomeScreen() {
   const [data, setData] = useState<BudgetNode | null>(null);
-  const timeout = useRef<any>(null);
+  const timeout = useRef<NodeJS.Timeout | null>(null);
 
+  // ---------------- LOAD ----------------
   useEffect(() => {
     load.execute().then((d) => {
       if (!d) {
@@ -44,9 +50,12 @@ export default function HomeScreen() {
     });
   }, []);
 
+  // ---------------- SAVE (DEBOUNCE) ----------------
   const persist = (updated: BudgetNode) => {
-    clearTimeout(timeout.current);
-    timeout.current = setTimeout(() => save.execute(updated), 500);
+    if (timeout.current) clearTimeout(timeout.current);
+    timeout.current = setTimeout(() => {
+      save.execute(updated);
+    }, 500);
     setData(updated);
   };
 
@@ -54,7 +63,11 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+        {/* 📊 GRÁFICA GENERAL */}
+        <BudgetPieChart data={pieUC.execute(data)} />
+
+        {/* 🌳 ÁRBOL */}
         <BudgetTree
           node={data}
           onAmountChange={(id, v) =>
@@ -69,12 +82,13 @@ export default function HomeScreen() {
         />
       </ScrollView>
 
-      {/* 🔽 RESET ABAJO (FIJO PARA MÓVIL) */}
+      {/* 🔴 RESET ABAJO */}
       <View
         style={{
           padding: 12,
           borderTopWidth: 1,
           borderColor: "#e5e7eb",
+          backgroundColor: "#fff",
         }}
       >
         <TouchableOpacity
@@ -87,14 +101,14 @@ export default function HomeScreen() {
             })
           }
           style={{
-            backgroundColor: "#2563eb",
-            paddingVertical: 12,
-            borderRadius: 8,
+            backgroundColor: "#dc2626",
+            paddingVertical: 14,
+            borderRadius: 10,
             alignItems: "center",
           }}
         >
-          <AppText style={{ color: "#fff", fontWeight: "600" }}>
-            RESET
+          <AppText style={{ color: "#fff", fontWeight: "700" }}>
+            RESET PRESUPUESTO
           </AppText>
         </TouchableOpacity>
       </View>

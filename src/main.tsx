@@ -1,7 +1,10 @@
-import { View } from "react-native";
-import { Text } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "./presentation/screens/HomeScreen";
 
-export default function Main() {
-  return <HomeScreen />;
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <HomeScreen />
+    </SafeAreaProvider>
+  );
 }
