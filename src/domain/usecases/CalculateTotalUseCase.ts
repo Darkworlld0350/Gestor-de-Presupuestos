@@ -2,15 +2,16 @@ import { BudgetNode } from "../entities/BudgetNode";
 
 export class CalculateTotalUseCase {
   execute(node: BudgetNode): number {
-    if (!node.children || node.children.length === 0) {
-      return node.amount;
-    }
+    return this.sum(node);
+  }
 
-    const childrenTotal = node.children.reduce(
-      (sum, child) => sum + this.execute(child),
-      0
-    );
+  private sum(node: BudgetNode): number {
+    const children = node.children ?? [];
 
-    return node.amount + childrenTotal;
+    // hoja => el valor editable
+    if (children.length === 0) return Number(node.amount) || 0;
+
+    // padre => suma de hijos (y si quieres, también node.amount)
+    return children.reduce((acc, c) => acc + this.sum(c), 0);
   }
 }
