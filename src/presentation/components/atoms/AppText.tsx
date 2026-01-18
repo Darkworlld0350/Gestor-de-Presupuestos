@@ -1,14 +1,24 @@
-import { Text, TextProps } from "react-native";
 import React from "react";
+import { Text, TextProps, StyleSheet } from "react-native";
+import { useThemeContext } from "../../theme/useThemeContext";
 
-interface Props extends TextProps {
-  children: React.ReactNode;
-}
+export function AppText(props: TextProps) {
+  const { colors } = useThemeContext();
 
-export function AppText({ children, style, ...props }: Props) {
   return (
-    <Text style={style} {...props}>
-      {children}
-    </Text>
+    <Text
+      {...props}
+      style={[
+        styles.base,
+        { color: colors.text },
+        props.style,
+      ]}
+    />
   );
 }
+
+const styles = StyleSheet.create({
+  base: {
+    fontSize: 14,
+  },
+});

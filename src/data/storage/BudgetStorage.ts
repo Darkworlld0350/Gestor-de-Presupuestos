@@ -4,7 +4,11 @@ import { BudgetNode } from "../../domain/entities/BudgetNode";
 const BUDGET_KEY = "budget_current";
 const HISTORY_KEY = "budget_history";
 
+/** 🔑 prefijos para settings */
+const SETTINGS_PREFIX = "settings_";
+
 export class BudgetStorage {
+  /* ================== PRESUPUESTO ================== */
   async save(budget: BudgetNode) {
     await AsyncStorage.setItem(BUDGET_KEY, JSON.stringify(budget));
 
@@ -34,5 +38,25 @@ export class BudgetStorage {
 
   async clear() {
     await AsyncStorage.multiRemove([BUDGET_KEY, HISTORY_KEY]);
+  }
+
+  /* ================== SETTINGS (TEMA, ETC.) ================== */
+  async setString(key: string, value: string) {
+    await AsyncStorage.setItem(
+      `${SETTINGS_PREFIX}${key}`,
+      value
+    );
+  }
+
+  async getString(key: string): Promise<string | null> {
+    return AsyncStorage.getItem(
+      `${SETTINGS_PREFIX}${key}`
+    );
+  }
+
+  async removeString(key: string) {
+    await AsyncStorage.removeItem(
+      `${SETTINGS_PREFIX}${key}`
+    );
   }
 }
