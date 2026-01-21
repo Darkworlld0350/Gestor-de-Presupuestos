@@ -1,67 +1,124 @@
 import { View, StyleSheet, TouchableOpacity } from "react-native";
 import { useState } from "react";
-import { BudgetNode } from "../../../domain/entities/BudgetNode";
-import { BudgetItem } from "../molecules/BudgetItem";
-import { CalculateTotalUseCase } from "../../../domain/usecases/CalculateTotalUseCase";
-import { AppText } from "../atoms/AppText";
 
+import { BudgetNode } from "../../../domain/entities/BudgetNode";
+import { CalculateTotalUseCase } from "../../../domain/usecases/CalculateTotalUseCase";
+
+import { BudgetItem } from "../molecules/BudgetItemRow";
+import { AppText } from "../atoms/AppText";
+import { useThemeContext } from "../../styles/theme/useThemeContext";
+
+// Props del componente BudgetTree
 interface Props {
+  // Nodo actual del árbol de presupuesto
   node: BudgetNode;
+  // Nivel de profundidad en el árbol (para indentación)
   level?: number;
+
+  // Callback para cambiar el monto de un nodo
   onAmountChange: (id: string, value: number) => void;
+  // Callback para cambiar el nombre de un nodo
   onNameChange: (id: string, name: string) => void;
+  // Callback para agregar un hijo a un nodo
   onAddChild: (id: string) => void;
+
+  // Callback opcional para eliminar un nodo
+  onDelete?: (id: string, label: string) => void;
 }
 
+// Caso de uso reutilizado para calcular totales
 const calc = new CalculateTotalUseCase();
 
+// Componente recursivo que renderiza el árbol de presupuestos
 export function BudgetTree({
   node,
   level = 0,
   onAmountChange,
   onNameChange,
   onAddChild,
+  onDelete,
 }: Props) {
+  // Colores del tema actual
+  const { colors } = useThemeContext();
+
+  // Estado para colapsar / expandir nodos padre
   const [collapsed, setCollapsed] = useState(false);
 
+  // Hijos del nodo actual
   const children = node.children ?? [];
+
+  // Determina si el nodo es hoja
   const isLeaf = children.length === 0;
 
-  // ✅ total SIEMPRE calculado
+  // Total calculado siempre para nodos padre
   const total = calc.execute(node);
+
+  // Evita borrar el nodo raíz
+  const canDelete = node.id !== "1";
+
+  // Textos dinámicos según el nivel del nodo
+  const isRoot = level === 0;
+  const addLabel = isRoot ? "Categoría" : "Subcategoría";
+  const addHint = isRoot
+    ? "Agregar una categoría principal"
+    : `Agregar dentro de “${node.name}”`;
 
   return (
     <View style={{ marginLeft: level * 16 }}>
-      {/* Fila principal */}
+      {/* Fila principal del nodo */}
       <TouchableOpacity
-        activeOpacity={0.8}
+        activeOpacity={0.85}
         disabled={isLeaf}
+        // Al presionar un nodo padre se colapsa / expande
         onPress={() => setCollapsed((p) => !p)}
       >
         <BudgetItem
           name={node.name}
-          // ✅ hoja => amount editable | padre => total calculado
+          // Si es hoja se muestra su monto, si no el total calculado
           amount={isLeaf ? node.amount : total}
           isLeaf={isLeaf}
+          // Indica visualmente si está colapsado
           collapsed={!isLeaf ? collapsed : undefined}
           onNameChange={(name) => onNameChange(node.id, name)}
           onAmountChange={(v) => onAmountChange(node.id, v)}
+          // Habilita eliminar solo si no es raíz
+          onDelete={
+            canDelete && onDelete
+              ? () => onDelete(node.id, node.name)
+              : undefined
+          }
         />
       </TouchableOpacity>
 
-      {/* ✅ Botón “Añadir categoría” (SIEMPRE visible) */}
+      {/* Botón para agregar una categoría o subcategoría */}
       <TouchableOpacity
         onPress={() => onAddChild(node.id)}
-        activeOpacity={0.8}
-        style={[styles.addRow, { marginLeft: level === 0 ? 0 : 6 }]}
+        activeOpacity={0.85}
+        style={[
+          styles.addRow,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+          },
+        ]}
       >
-        <AppText style={styles.addIcon}>＋</AppText>
-        <AppText style={styles.addText}>
-          Añadir categoría
+        {/* Icono de agregar */}
+        <AppText style={[styles.addIcon, { color: colors.primary }]}>
+          ＋
         </AppText>
+
+        {/* Texto descriptivo */}
+        <View>
+          <AppText style={[styles.addText, { color: colors.primary }]}>
+            {addLabel}
+          </AppText>
+          <AppText style={[styles.addHint, { color: colors.textMuted }]}>
+            {addHint}
+          </AppText>
+        </View>
       </TouchableOpacity>
 
-      {/* Hijos */}
+      {/* Renderizado recursivo de los hijos */}
       {!collapsed &&
         children.map((c) => (
           <BudgetTree
@@ -71,33 +128,39 @@ export function BudgetTree({
             onAmountChange={onAmountChange}
             onNameChange={onNameChange}
             onAddChild={onAddChild}
+            onDelete={onDelete}
           />
         ))}
     </View>
   );
 }
 
+// Estilos del botón para agregar nodos
 const styles = StyleSheet.create({
   addRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 6,
+    marginTop: 2,
     marginBottom: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
     alignSelf: "flex-start",
-    backgroundColor: "#eef2ff",
+    borderWidth: 1,
   },
   addIcon: {
     fontSize: 18,
     fontWeight: "900",
-    color: "#2563eb",
-    marginRight: 6,
+    marginRight: 10,
     lineHeight: 18,
   },
   addText: {
-    color: "#2563eb",
-    fontWeight: "700",
+    fontWeight: "900",
+    fontSize: 14,
+  },
+  addHint: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: "600",
   },
 });

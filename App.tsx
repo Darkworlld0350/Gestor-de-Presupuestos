@@ -1,10 +1,15 @@
-import { registerRootComponent } from "expo";
-import Main from "./src/main";
+// App.tsx
+import React from "react";
+import { ThemeProvider } from "./src/presentation/styles/theme/useThemeContext";
+import AppNavigation from "./src/navigation/AppNavigation";
 
-function App() {
-  return <Main />;
+// Componente raíz de la aplicación
+export default function App() {
+  return (
+    // Provee el contexto de tema (light / dark / auto) a toda la app
+    <ThemeProvider>
+      {/* Navegación principal de la aplicación */}
+      <AppNavigation />
+    </ThemeProvider>
+  );
 }
-
-registerRootComponent(App);
-
-export default App;

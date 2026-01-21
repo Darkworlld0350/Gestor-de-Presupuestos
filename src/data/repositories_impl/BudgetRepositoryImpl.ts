@@ -1,16 +1,28 @@
-import { BudgetRepository } from "../../domain/repositories/BudgetRepository";
 import { BudgetNode } from "../../domain/entities/BudgetNode";
 import { BudgetLocalDatasource } from "../datasources/BudgetLocalDatasource";
+import { BudgetMapper } from "../mappers/BudgetMapper";
 
-export class BudgetRepositoryImpl implements BudgetRepository {
+// Implementación del repositorio de presupuesto usando almacenamiento local
+export class BudgetRepositoryImpl {
+  // Inyecta el datasource encargado de la persistencia
   constructor(private datasource: BudgetLocalDatasource) {}
 
-  async save(tree: BudgetNode[]) {
-    await this.datasource.save(JSON.stringify(tree));
+  // Guarda el presupuesto del dominio convirtiéndolo a JSON
+  async save(budget: BudgetNode): Promise<void> {
+    const json = BudgetMapper.toJson(budget);
+    await this.datasource.save(json);
   }
 
-  async load(): Promise<BudgetNode[]> {
-    const data = await this.datasource.load();
-    return data ? JSON.parse(data) : [];
+  // Carga el presupuesto desde el almacenamiento local
+  // Retorna null si no existe información guardada
+  async load(): Promise<BudgetNode | null> {
+    const json = await this.datasource.load();
+    if (!json) return null;
+    return BudgetMapper.fromJson(json);
+  }
+
+  // Elimina el presupuesto almacenado
+  async clear(): Promise<void> {
+    await this.datasource.clear();
   }
 }
