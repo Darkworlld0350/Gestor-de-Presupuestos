@@ -1,33 +1,88 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {View,TouchableOpacity,StyleSheet,ScrollView,Alert,ActivityIndicator,} from "react-native";
+import {
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  Platform,
+} from "react-native";
 import { SafeArea } from "../components/atoms/SafeArea";
 import { AppText } from "../components/atoms/AppText";
 import { useThemeContext } from "../styles/theme/useThemeContext";
 import type { NavigationProps } from "../../navigation/AppNavigation";
-import { BudgetStorage, type HistoryEntry } from "../../data/storage/BudgetStorage";
+import {
+  BudgetStorage,
+  type HistoryEntry,
+} from "../../data/storage/BudgetStorage";
 import type { BudgetNode } from "../../domain/entities/BudgetNode";
 
-// Instancia del storage para leer/escribir historial, favoritos y restauración
+// Instancia del storage (maneja historial, favoritos y restore usando AsyncStorage)
 const storage = new BudgetStorage();
 
-// Formatea una fecha ISO a formato legible
+/* ---------------- HELPERS ---------------- */
+
+// Formatea una fecha ISO a formato legible para mostrarla en pantalla
 function formatDate(iso: string) {
   const d = new Date(iso);
-  // Si el ISO no es válido, regresa el string original
+  // Si no se pudo parsear, devuelve el string original
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
 }
 
-// Calcula el total de un presupuesto (suma recursiva de hojas)
+// Calcula el total de un presupuesto (suma recursiva: hojas = amount)
 function totalOf(node: BudgetNode): number {
   const children = node.children ?? [];
-  // Nodo hoja: retorna su monto
+  // Nodo hoja: retorna el monto capturado
   if (children.length === 0) return Number(node.amount) || 0;
-  // Nodo padre: suma los totales de hijos
+  // Nodo padre: suma totales de hijos
   return children.reduce((acc, c) => acc + totalOf(c), 0);
 }
 
-// Pantalla que muestra el historial de presupuestos guardados
+//  Confirm cross-platform (WEB: window.confirm, MOBILE: Alert.alert)
+// Muestra un diálogo de confirmación y retorna true/false según la respuesta
+async function confirmAction(opts: {
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  destructive?: boolean;
+}): Promise<boolean> {
+  const confirmText = opts.confirmText ?? "Aceptar";
+  const cancelText = opts.cancelText ?? "Cancelar";
+
+  // En web, se usa confirm del navegador
+  if (Platform.OS === "web") {
+    return window.confirm(`${opts.title}\n\n${opts.message}`);
+  }
+
+  // En nativo, se usa Alert.alert envuelto en Promise
+  return new Promise((resolve) => {
+    Alert.alert(opts.title, opts.message, [
+      { text: cancelText, style: "cancel", onPress: () => resolve(false) },
+      {
+        text: confirmText,
+        style: opts.destructive ? "destructive" : "default",
+        onPress: () => resolve(true),
+      },
+    ]);
+  });
+}
+
+//  Alert cross-platform (WEB: window.alert, MOBILE: Alert.alert)
+// Muestra un mensaje simple y compatible entre plataformas
+function showMessage(title: string, message: string) {
+  if (Platform.OS === "web") {
+    window.alert(`${title}\n\n${message}`);
+    return;
+  }
+  Alert.alert(title, message);
+}
+
+/* ---------------- SCREEN ---------------- */
+
+// Pantalla de historial: lista versiones guardadas del presupuesto
 export default function HistoryScreen({
   navigation,
 }: {
@@ -36,18 +91,18 @@ export default function HistoryScreen({
   // Colores del tema actual
   const { colors } = useThemeContext();
 
-  // Lista de entradas del historial
+  // Historial completo (cada entrada guarda fecha y snapshot del presupuesto)
   const [items, setItems] = useState<HistoryEntry[]>([]);
-  // IDs (date ISO) marcados como favoritos
+  // Lista de ids marcados como favoritos (por date/id)
   const [favorites, setFavorites] = useState<string[]>([]);
-  // Estado de carga
+  // Indicador de carga
   const [loading, setLoading] = useState(true);
 
-  // Carga historial + favoritos (reutilizable tras borrar o acciones)
+  // Carga historial + favoritos y actualiza el estado (helper para refrescar pantalla)
   const loadAll = async () => {
     setLoading(true);
     try {
-      // Ejecuta ambas lecturas en paralelo
+      // Obtiene historial y favoritos en paralelo
       const [h, fav] = await Promise.all([
         storage.getHistory(),
         storage.getFavorites(),
@@ -61,7 +116,7 @@ export default function HistoryScreen({
 
   // Carga inicial al montar la pantalla
   useEffect(() => {
-    // Bandera para evitar setState si el componente se desmonta
+    // Evita setState después del unmount
     let mounted = true;
 
     (async () => {
@@ -80,67 +135,71 @@ export default function HistoryScreen({
       }
     })();
 
-    // Cleanup: marca como desmontado
+    // Cleanup
     return () => {
       mounted = false;
     };
   }, []);
 
-  // Confirma y borra el historial (sin borrar el presupuesto actual)
-  const clearHistory = () => {
-    Alert.alert(
-      "Borrar historial",
-      "¿Seguro que deseas borrar el historial?\nNo borra tu presupuesto actual.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Borrar",
-          style: "destructive",
-          onPress: async () => {
-            await storage.clearHistory();
-            // Recarga el estado en pantalla
-            await loadAll();
-          },
-        },
-      ]
-    );
+  //  Confirma y borra el historial (sin borrar presupuesto actual)
+  const clearHistory = async () => {
+    const ok = await confirmAction({
+      title: "Borrar historial",
+      message:
+        "¿Seguro que deseas borrar el historial?\nNo borra tu presupuesto actual.",
+      confirmText: "Borrar",
+      cancelText: "Cancelar",
+      destructive: true,
+    });
+
+    if (!ok) return;
+
+    try {
+      // Borra historial del storage y recarga estados
+      await storage.clearHistory();
+      await loadAll();
+    } catch {
+      showMessage("Error", "No se pudo borrar el historial");
+    }
   };
 
-  // Marca/desmarca una entrada como favorita
+  //  Favorito: agrega o quita un id de favoritos y actualiza el estado
   const onToggleFavorite = async (id: string) => {
     try {
       const next = await storage.toggleFavorite(id);
       setFavorites(next);
     } catch {
-      Alert.alert("Error", "No se pudo actualizar favorito");
+      showMessage("Error", "No se pudo actualizar favorito");
     }
   };
 
-  // Confirma restauración de un presupuesto desde historial
-  const onRestore = (entry: HistoryEntry) => {
-    Alert.alert(
-      "Restaurar presupuesto",
-      "¿Quieres restaurar este presupuesto como el actual?\nSe reemplazará el presupuesto actual.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Restaurar",
-          onPress: async () => {
-            try {
-              // Guarda el presupuesto seleccionado como actual
-              await storage.restore(entry.budget);
-              // Regresa a Home (AppNavigation re-monta Home y recarga)
-              navigation.goBack();
-            } catch {
-              Alert.alert("Error", "No se pudo restaurar");
-            }
-          },
-        },
-      ]
-    );
+  //  Restaurar: confirma, setea el presupuesto actual y regresa a Home
+  const onRestore = async (entry: HistoryEntry) => {
+    const ok = await confirmAction({
+      title: "Restaurar presupuesto",
+      message:
+        "¿Quieres restaurar este presupuesto como el actual?\nSe reemplazará el presupuesto actual.",
+      confirmText: "Restaurar",
+      cancelText: "Cancelar",
+    });
+
+    if (!ok) return;
+
+    try {
+      // Guarda el snapshot elegido como presupuesto actual
+      await storage.restore(entry.budget);
+
+      //  Si tu navigation expone refreshHome, lo ejecuta (opcional)
+      navigation.refreshHome?.();
+
+      // Regresa a Home
+      navigation.goBack();
+    } catch {
+      showMessage("Error", "No se pudo restaurar");
+    }
   };
 
-  // Ordena el listado: favoritos primero, luego el resto
+  // Ordena: favoritos primero, luego el resto (manteniendo orden relativo)
   const merged = useMemo(() => {
     const favSet = new Set(favorites);
     const favs = items.filter((x) => favSet.has(x.date));
@@ -150,18 +209,21 @@ export default function HistoryScreen({
 
   return (
     <SafeArea style={[styles.safe, { backgroundColor: colors.bg }]}>
-      {/* Header: volver, título y borrar */}
+      {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        {/* Volver */}
         <TouchableOpacity onPress={navigation.goBack} activeOpacity={0.85}>
           <AppText style={{ color: colors.primary, fontWeight: "900" }}>
             ← Volver
           </AppText>
         </TouchableOpacity>
 
+        {/* Título */}
         <AppText style={[styles.title, { color: colors.text }]}>
           Historial
         </AppText>
 
+        {/* Borrar historial */}
         <TouchableOpacity onPress={clearHistory} activeOpacity={0.85}>
           <AppText style={{ color: colors.danger, fontWeight: "900" }}>
             Borrar
@@ -169,8 +231,9 @@ export default function HistoryScreen({
         </TouchableOpacity>
       </View>
 
-      {/* Estados: cargando, vacío, o lista */}
+      {/* Body */}
       {loading ? (
+        // Estado: cargando
         <View style={styles.center}>
           <ActivityIndicator size="large" />
           <AppText style={{ color: colors.textMuted, marginTop: 10 }}>
@@ -178,6 +241,7 @@ export default function HistoryScreen({
           </AppText>
         </View>
       ) : merged.length === 0 ? (
+        // Estado: vacío
         <View style={styles.center}>
           <AppText
             style={{
@@ -187,17 +251,19 @@ export default function HistoryScreen({
             }}
           >
             Aún no hay historial.
-            {"\n"}Modifica el presupuesto y espera a que se guarde para crear registros.
+            {"\n"}Modifica el presupuesto y espera a que se guarde para crear
+            registros.
           </AppText>
         </View>
       ) : (
+        // Estado: lista con tarjetas
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
           {merged.map((it) => {
-            // Total del presupuesto guardado
+            // Total del snapshot
             const total = totalOf(it.budget);
-            // Número de categorías principales (hijos directos de la raíz)
+            // Número de categorías raíz (hijos del presupuesto)
             const roots = (it.budget.children ?? []).length;
-            // Determina si está marcado como favorito
+            // ¿es favorito?
             const isFav = favorites.includes(it.date);
 
             return (
@@ -208,13 +274,13 @@ export default function HistoryScreen({
                   { backgroundColor: colors.card, borderColor: colors.border },
                 ]}
               >
+                {/* Fila superior: fecha + estrella */}
                 <View style={styles.rowBetween}>
-                  {/* Fecha del registro */}
                   <AppText style={{ color: colors.text, fontWeight: "900" }}>
                     {formatDate(it.date)}
                   </AppText>
 
-                  {/* Botón favorito (estrella) */}
+                  {/* Toggle favorito */}
                   <TouchableOpacity
                     onPress={() => onToggleFavorite(it.date)}
                     activeOpacity={0.85}
@@ -231,7 +297,7 @@ export default function HistoryScreen({
                   </TouchableOpacity>
                 </View>
 
-                {/* Resumen del registro */}
+                {/* Resumen */}
                 <AppText style={{ color: colors.textMuted, marginTop: 6 }}>
                   Total: ${total}
                 </AppText>
@@ -239,11 +305,14 @@ export default function HistoryScreen({
                   Categorías principales: {roots}
                 </AppText>
 
-                {/* Acción: restaurar este presupuesto */}
+                {/* Restaurar snapshot */}
                 <TouchableOpacity
                   onPress={() => onRestore(it)}
                   activeOpacity={0.85}
-                  style={[styles.restoreBtn, { backgroundColor: colors.primary }]}
+                  style={[
+                    styles.restoreBtn,
+                    { backgroundColor: colors.primary },
+                  ]}
                 >
                   <AppText style={{ color: "#fff", fontWeight: "900" }}>
                     Restaurar este presupuesto
@@ -258,7 +327,7 @@ export default function HistoryScreen({
   );
 }
 
-// Estilos de la pantalla
+// Estilos de la pantalla de historial
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   header: {

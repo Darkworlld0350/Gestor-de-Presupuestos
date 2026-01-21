@@ -1,71 +1,82 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import HomeScreen from "../presentation/screens/HomeScreen";
 import HistoryScreen from "../presentation/screens/HistoryScreen";
 
-// Nombres de rutas disponibles en la aplicación
 export type RouteName = "Home" | "History";
 
-// Props de navegación que se inyectan a cada pantalla
 export type NavigationProps = {
-  // Ruta actual
   route: RouteName;
-  // Navega a una nueva ruta
   navigate: (to: RouteName) => void;
-  // Regresa a la pantalla anterior
   goBack: () => void;
+
+  // ✅ opcional pero MUY útil
+  refreshHome: () => void;
 };
 
-// Elemento interno del stack de navegación
-type StackItem = {
-  // Nombre de la ruta
-  route: RouteName;
-  // Key usada para forzar re-render / re-mount
-  key: number;
-};
+type StackItem = { route: RouteName; key: string };
 
-// Navegación simple basada en stack (sin librerías externas)
+// ✅ key fuerte (web + mobile) para re-mount REAL
+const genKey = () =>
+  `${Date.now()}_${Math.random().toString(16).slice(2)}_${Math.random()
+    .toString(16)
+    .slice(2)}`;
+
 export default function AppNavigation() {
-  // Stack de navegación, inicia en Home
   const [stack, setStack] = useState<StackItem[]>([
-    { route: "Home", key: 1 },
+    { route: "Home", key: genKey() },
   ]);
 
-  // Obtiene la ruta actual (último elemento del stack)
-  const current = stack[stack.length - 1] ?? { route: "Home", key: 1 };
+  const current = stack[stack.length - 1] ?? { route: "Home", key: genKey() };
 
-  // Agrega una nueva ruta al stack
-  const navigate = (to: RouteName) =>
-    setStack((prev) => [...prev, { route: to, key: Date.now() }]);
-
-  // Regresa a la ruta anterior
-  const goBack = () =>
+  const refreshHome = () => {
     setStack((prev) => {
-      // Evita eliminar la última pantalla
+      const next = [...prev];
+      // busca el último Home en el stack y le cambia la key
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].route === "Home") {
+          next[i] = { route: "Home", key: genKey() };
+          break;
+        }
+      }
+      return next;
+    });
+  };
+
+  const navigate = (to: RouteName) => {
+    setStack((prev) => [...prev, { route: to, key: genKey() }]);
+  };
+
+  const goBack = () => {
+    setStack((prev) => {
       if (prev.length <= 1) return prev;
 
-      // Elimina la ruta actual
       const next = prev.slice(0, -1);
 
-      // Si regresamos a Home, se fuerza el re-mount
-      // para recargar el presupuesto restaurado
-      const last = next[next.length - 1];
-      if (last?.route === "Home") {
-        next[next.length - 1] = { route: "Home", key: Date.now() };
+      // ✅ al volver desde History, forzamos re-mount de Home SIEMPRE
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].route === "Home") {
+          next[i] = { route: "Home", key: genKey() };
+          break;
+        }
       }
 
       return next;
     });
-
-  // Objeto de navegación que se pasa a las pantallas
-  const navigation: NavigationProps = {
-    route: current.route,
-    navigate,
-    goBack,
   };
 
-  // Renderiza la pantalla según la ruta actual
+  const navigation: NavigationProps = useMemo(
+    () => ({
+      route: current.route,
+      navigate,
+      goBack,
+      refreshHome,
+    }),
+    [current.route]
+  );
+
+  // ✅ render según ruta
   if (current.route === "History") {
-    return <HistoryScreen navigation={navigation} />;
+    return <HistoryScreen key={current.key} navigation={navigation} />;
   }
 
   return <HomeScreen key={current.key} navigation={navigation} />;

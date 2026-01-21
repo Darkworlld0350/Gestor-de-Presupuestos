@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import {ScrollView,View,TouchableOpacity,StyleSheet,Alert,ActivityIndicator,useColorScheme,} from "react-native";
+import {
+  ScrollView,
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  useColorScheme,
+  Platform,
+} from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { SafeArea } from "../components/atoms/SafeArea";
@@ -7,7 +16,15 @@ import { BudgetTree } from "../components/organisms/BudgetTree";
 import { BudgetPieChart } from "../components/molecules/BudgetPieChart";
 import { BudgetNode } from "../../domain/entities/BudgetNode";
 
-import {updateNodeAmount,updateNodeName,addChildNode,findNodeById,removeNodeById,existsNodeId,} from "../utils/budgetTreeUtils";
+import {
+  updateNodeAmount,
+  updateNodeName,
+  addChildNode,
+  findNodeById,
+  removeNodeById,
+  existsNodeId,
+} from "../utils/budgetTreeUtils";
+
 import { LoadBudgetUseCase } from "../../domain/usecases/LoadBudgetUseCase";
 import { SaveBudgetUseCase } from "../../domain/usecases/SaveBudgetUseCase";
 import { GetPieChartDataUseCase } from "../../domain/usecases/GetPieChartDataUseCase";
@@ -22,14 +39,14 @@ import type { ThemeMode } from "../styles/theme/useThemeContext";
 import type { NavigationProps } from "../../navigation/AppNavigation";
 
 /* ---------------- USE CASES ---------------- */
-// Storage y casos de uso para cargar/guardar y generar datos del pie chart
+// Instancias de infraestructura (storage) y casos de uso del dominio
 const storage = new BudgetStorage();
 const load = new LoadBudgetUseCase(storage);
 const save = new SaveBudgetUseCase(storage);
 const pieUC = new GetPieChartDataUseCase();
 
 /* ---------------- HELPERS ---------------- */
-// Crea un presupuesto raíz vacío (nodo "Presupuesto")
+// Crea el nodo raíz vacío del presupuesto
 const makeEmptyRoot = (): BudgetNode => ({
   id: "1",
   name: "Presupuesto",
@@ -37,46 +54,88 @@ const makeEmptyRoot = (): BudgetNode => ({
   children: [],
 });
 
-// Clave para persistir el modo de tema
+// Clave para persistir el modo de tema en AsyncStorage
 const THEME_KEY = "theme_mode";
 
-// Pantalla principal: árbol de presupuesto + gráfico + exportaciones + tema + navegación
+/**  Confirm cross-platform (WEB: confirm, MOBILE: Alert.alert) */
+// Muestra confirmación y retorna booleano (true = confirmado)
+async function confirmAction(opts: {
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  destructive?: boolean;
+}): Promise<boolean> {
+  const confirmText = opts.confirmText ?? "Aceptar";
+  const cancelText = opts.cancelText ?? "Cancelar";
+
+  // En web usamos confirm nativo
+  if (Platform.OS === "web") {
+    return window.confirm(`${opts.title}\n\n${opts.message}`);
+  }
+
+  // En nativo usamos Alert.alert y envolvemos en Promise
+  return new Promise((resolve) => {
+    Alert.alert(opts.title, opts.message, [
+      { text: cancelText, style: "cancel", onPress: () => resolve(false) },
+      {
+        text: confirmText,
+        style: opts.destructive ? "destructive" : "default",
+        onPress: () => resolve(true),
+      },
+    ]);
+  });
+}
+
+/**  Alert cross-platform (WEB: alert, MOBILE: Alert.alert) */
+// Muestra un mensaje simple compatible en web y móvil
+function showMessage(title: string, message: string) {
+  if (Platform.OS === "web") {
+    window.alert(`${title}\n\n${message}`);
+    return;
+  }
+  Alert.alert(title, message);
+}
+
+/* ---------------- SCREEN ---------------- */
+// Pantalla principal: árbol, gráfica, exportación, tema y navegación
 export default function HomeScreen({
   navigation,
 }: {
   navigation: NavigationProps;
 }) {
-  // Tema actual (colores) y modo (auto/light/dark)
+  // Obtiene colores y modo actual del ThemeProvider
   const { colors, mode, setMode } = useThemeContext();
-
-  // Esquema del sistema (light/dark) para mostrarlo al usuario
+  // Esquema del sistema para mostrarlo como referencia (light/dark)
   const systemScheme = useColorScheme(); // "light" | "dark" | null
 
-  // Presupuesto raíz actual
+  // Estado principal del presupuesto (raíz)
   const [data, setData] = useState<BudgetNode | null>(null);
-  // Indicador de guardado en proceso
+  // Indica si hay un guardado en curso
   const [isSaving, setIsSaving] = useState(false);
-  // Key para forzar re-mount del árbol cuando se resetea
+  // Key para forzar re-mount del árbol (útil al resetear)
   const [treeKey, setTreeKey] = useState(0);
 
-  // Stack de navegación del gráfico (para drill-down por categorías)
+  // Stack de navegación del gráfico (drill-down por categoría)
   const [chartStack, setChartStack] = useState<string[]>(["1"]);
-  // Nodo actualmente seleccionado para el gráfico
+  // Nodo seleccionado en el gráfico (último del stack)
   const selectedNodeId = chartStack[chartStack.length - 1] ?? "1";
 
-  // Timeout para debounce del guardado (evita guardar en cada tecla)
+  // Timeout para debounce del guardado (evita escribir storage en cada cambio)
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Referencia al último estado del presupuesto (para exportar aunque haya renders)
+  // Referencia al último árbol (para exportar aun si hay renders)
   const latestDataRef = useRef<BudgetNode | null>(null);
 
-  // Carga inicial: tema + presupuesto
+  // Carga inicial: tema + presupuesto desde almacenamiento
   useEffect(() => {
+    // Bandera para evitar setState si el componente se desmonta
     let mounted = true;
 
     (async () => {
-      // ======= Cargar tema guardado =======
+      // ---------------- THEME ----------------
       try {
         const saved = (await AsyncStorage.getItem(THEME_KEY)) as ThemeMode | null;
+        // Valida y aplica modo persistido
         if (
           mounted &&
           (saved === "auto" || saved === "light" || saved === "dark")
@@ -85,35 +144,35 @@ export default function HomeScreen({
         }
       } catch {}
 
-      // ======= Cargar presupuesto guardado =======
+      // ---------------- BUDGET ----------------
       const stored = await load.execute();
       if (!mounted) return;
 
-      // Si no hay guardado, crea uno vacío
+      // Si no hay presupuesto guardado, crea uno vacío
       const root = stored ?? makeEmptyRoot();
 
-      // Si no existía, lo persistimos para que ya haya base
+      // Si no existía, lo persistimos para tener base
       if (!stored) {
         try {
           await save.execute(root);
         } catch {}
       }
 
-      // Actualiza estado y refs
+      // Actualiza estado y referencias
       setData(root);
       latestDataRef.current = root;
-      // Inicializa el chart en la raíz
+      // Inicializa la gráfica en el root
       setChartStack([root.id]);
     })();
 
-    // Cleanup: evita setState tras unmount y limpia el debounce
+    // Cleanup: limpia debounce y evita updates tras unmount
     return () => {
       mounted = false;
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
     };
   }, [setMode]);
 
-  // Persiste el tema seleccionado (y actualiza el contexto)
+  // Persiste el modo seleccionado y actualiza el ThemeContext
   const persistTheme = async (next: ThemeMode) => {
     setMode(next);
     try {
@@ -121,31 +180,32 @@ export default function HomeScreen({
     } catch {}
   };
 
-  // Alterna entre auto -> dark -> light -> auto
+  // Cicla entre auto → dark → light → auto
   const toggleTheme = async () => {
     const next: ThemeMode =
       mode === "auto" ? "dark" : mode === "dark" ? "light" : "auto";
     await persistTheme(next);
   };
 
-  // Aplica un cambio al árbol y lo guarda con debounce
+  // Aplica un cambio inmutable al árbol y lo guarda con debounce
   const applyAndPersist = (updater: (prev: BudgetNode) => BudgetNode) => {
     setData((prev) => {
       if (!prev) return prev;
 
-      // Aplica la actualización (inmutable)
+      // Calcula el árbol actualizado
       const updated = updater(prev);
-      // Guarda referencia al estado más reciente
+      // Guarda referencia al último estado
       latestDataRef.current = updated;
 
-      // Reinicia debounce de guardado
+      // Reinicia el debounce si ya había uno pendiente
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
 
-      // Marca como "guardando"
+      // Indica guardado en progreso
       setIsSaving(true);
+
+      // Debounce: guarda después de 500ms sin cambios
       saveTimeout.current = setTimeout(async () => {
         try {
-          // Persiste en storage
           await save.execute(updated);
         } finally {
           setIsSaving(false);
@@ -156,20 +216,33 @@ export default function HomeScreen({
     });
   };
 
-  // Resetea el presupuesto a vacío y lo persiste inmediatamente
+  // Resetea el presupuesto a vacío (confirmado) y lo persiste
   const resetBudget = async () => {
+    // Cancela cualquier guardado pendiente
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
 
+    // Confirmación cross-platform
+    const ok = await confirmAction({
+      title: "Reset presupuesto",
+      message: "¿Seguro que deseas reiniciar el presupuesto a vacío?",
+      confirmText: "Reset",
+      cancelText: "Cancelar",
+      destructive: true,
+    });
+
+    if (!ok) return;
+
+    // Crea root vacío y actualiza estado
     const root = makeEmptyRoot();
     setData(root);
     latestDataRef.current = root;
 
-    // Fuerza re-mount del árbol (por si hay estados internos)
+    // Forzar re-mount del árbol por seguridad
     setTreeKey((k) => k + 1);
-    // Regresa el gráfico al nivel raíz
+    // Reinicia navegación de gráfica
     setChartStack([root.id]);
 
-    // Guarda de inmediato
+    // Guarda inmediatamente
     setIsSaving(true);
     try {
       await save.execute(root);
@@ -178,7 +251,7 @@ export default function HomeScreen({
     }
   };
 
-  // Exporta el presupuesto actual a CSV
+  // Exporta a CSV usando el último estado disponible
   const onExportCSV = async () => {
     const current = latestDataRef.current;
     if (!current) return;
@@ -186,11 +259,11 @@ export default function HomeScreen({
     try {
       await exportBudgetToCSV(current);
     } catch (e: any) {
-      Alert.alert("Error al exportar CSV", e?.message ?? "Error desconocido");
+      showMessage("Error al exportar CSV", e?.message ?? "Error desconocido");
     }
   };
 
-  // Exporta el presupuesto actual a PDF
+  // Exporta a PDF usando el último estado disponible
   const onExportPDF = async () => {
     const current = latestDataRef.current;
     if (!current) return;
@@ -198,11 +271,12 @@ export default function HomeScreen({
     try {
       await exportBudgetToPDF(current);
     } catch (e: any) {
-      Alert.alert("Error al exportar PDF", e?.message ?? "Error desconocido");
+      showMessage("Error al exportar PDF", e?.message ?? "Error desconocido");
     }
   };
 
-  // Al seleccionar un segmento del pie chart, baja al siguiente nivel si tiene hijos
+  // Cuando se selecciona un slice del pie chart:
+  // si el nodo tiene hijos, hace "drill down" (baja un nivel)
   const onSelectSlice = (id: string) => {
     if (!data) return;
 
@@ -210,62 +284,57 @@ export default function HomeScreen({
     if (!node) return;
 
     const children = node.children ?? [];
-    // Si es hoja, no hay drill-down
+    // Si es hoja no se puede profundizar
     if (children.length === 0) return;
 
-    // Agrega el id al stack para navegar en el gráfico
     setChartStack((prev) => [...prev, id]);
   };
 
-  // Regresa un nivel en el gráfico
+  // Regresa un nivel en la navegación del gráfico
   const backChart = () => {
     setChartStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
   };
 
-  // Elimina una categoría con confirmación y ajusta el estado del chartStack
-  const onDeleteCategory = (id: string, label: string) => {
+  // Elimina una categoría (con confirmación) y repara el chartStack si era seleccionado
+  const onDeleteCategory = async (id: string, label: string) => {
     if (!data) return;
-    // No permitir borrar la raíz
+    // No permitir eliminar la raíz
     if (id === data.id) return;
 
-    Alert.alert(
-      "Eliminar categoría",
-      `¿Seguro que deseas eliminar "${label}"?\nSe borrarán también sus subcategorías.`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: () => {
-            // Aplica eliminación y persiste
-            applyAndPersist((prev) => removeNodeById(prev, id));
+    const ok = await confirmAction({
+      title: "Eliminar categoría",
+      message: `¿Seguro que deseas eliminar "${label}"?\nSe borrarán también sus subcategorías.`,
+      confirmText: "Eliminar",
+      cancelText: "Cancelar",
+      destructive: true,
+    });
 
-            // Limpia el id borrado del stack del gráfico
-            setChartStack((prev) => {
-              const next = prev.filter((x) => x !== id);
-              return next.length > 0 ? next : ["1"];
-            });
+    if (!ok) return;
 
-            // Revalida selección después del update (microtask)
-            setTimeout(() => {
-              const root = latestDataRef.current;
-              if (!root) return;
+    // Elimina y persiste
+    applyAndPersist((prev) => removeNodeById(prev, id));
 
-              setChartStack((prev) => {
-                const sel = prev[prev.length - 1] ?? "1";
-                // Si el seleccionado aún existe, se conserva
-                if (existsNodeId(root, sel)) return prev;
-                // Si ya no existe, vuelve a la raíz
-                return [root.id];
-              });
-            }, 0);
-          },
-        },
-      ]
-    );
+    // Quita el id borrado del stack del gráfico
+    setChartStack((prev) => {
+      const next = prev.filter((x) => x !== id);
+      return next.length > 0 ? next : ["1"];
+    });
+
+    // Revalida selección tras actualizar el árbol
+    setTimeout(() => {
+      const root = latestDataRef.current;
+      if (!root) return;
+
+      setChartStack((prev) => {
+        const sel = prev[prev.length - 1] ?? "1";
+        // Si aún existe, conserva; si no, vuelve a raíz
+        if (existsNodeId(root, sel)) return prev;
+        return [root.id];
+      });
+    }, 0);
   };
 
-  // Estado inicial mientras carga presupuesto
+  // Estado de carga inicial del presupuesto
   if (!data) {
     return (
       <SafeArea style={[styles.safe, styles.center, { backgroundColor: colors.bg }]}>
@@ -277,15 +346,15 @@ export default function HomeScreen({
     );
   }
 
-  // Nodo actualmente seleccionado para el gráfico (o raíz como fallback)
+  // Nodo actual para el gráfico (según el stack), con fallback a raíz
   const selectedNode = findNodeById(data, selectedNodeId) ?? data;
-  // Título dinámico según el nivel en el que estamos
+  // Título dinámico de la gráfica
   const chartTitle = `Distribución: ${selectedNode.name}`;
 
   return (
     <SafeArea style={[styles.safe, { backgroundColor: colors.bg }]}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/* 🧭 Navegación a pantalla de historial */}
+        {/*  Navegación a historial */}
         <TouchableOpacity
           onPress={() => navigation.navigate("History")}
           style={[
@@ -302,7 +371,7 @@ export default function HomeScreen({
           </AppText>
         </TouchableOpacity>
 
-        {/* 🌓 Toggle de tema (auto/dark/light) */}
+        {/*  Tema */}
         <TouchableOpacity
           onPress={toggleTheme}
           style={[
@@ -319,7 +388,7 @@ export default function HomeScreen({
           </AppText>
         </TouchableOpacity>
 
-        {/* 🔙 Botón para regresar un nivel en la gráfica */}
+        {/*  Volver nivel gráfica */}
         {chartStack.length > 1 && (
           <TouchableOpacity onPress={backChart} style={{ marginBottom: 8 }}>
             <AppText style={{ color: colors.primary, fontWeight: "800" }}>
@@ -328,21 +397,20 @@ export default function HomeScreen({
           </TouchableOpacity>
         )}
 
-        {/* 📊 Gráfico de pastel con drill-down */}
+        {/*  Pie */}
         <BudgetPieChart
           title={chartTitle}
           data={pieUC.execute(selectedNode)}
           onSelect={onSelectSlice}
-          // Centro con color de fondo para que se vea bien en dark
+          // Centro del donut con el mismo fondo para dark mode
           centerColor={colors.bg}
         />
 
-        {/* ✅ Indicador visual de guardado */}
+        {/*  Guardado */}
         <View style={styles.saveRow}>
           <View
             style={[
               styles.dot,
-              // Cambia color según si está guardando o ya guardó
               { backgroundColor: isSaving ? colors.warn : colors.ok },
             ]}
           />
@@ -351,7 +419,7 @@ export default function HomeScreen({
           </AppText>
         </View>
 
-        {/* 🌳 Árbol de presupuesto (edición + agregar + eliminar) */}
+        {/*  Tree */}
         <BudgetTree
           key={treeKey}
           node={data}
@@ -361,14 +429,12 @@ export default function HomeScreen({
           onNameChange={(id, name) =>
             applyAndPersist((prev) => updateNodeName(prev, id, name))
           }
-          onAddChild={(id) =>
-            applyAndPersist((prev) => addChildNode(prev, id))
-          }
+          onAddChild={(id) => applyAndPersist((prev) => addChildNode(prev, id))}
           onDelete={onDeleteCategory}
         />
       </ScrollView>
 
-      {/* Contenedor inferior fijo con acciones */}
+      {/* botones */}
       <View
         style={[
           styles.bottomContainer,
@@ -380,7 +446,6 @@ export default function HomeScreen({
           style={[
             styles.button,
             { backgroundColor: colors.neutral },
-            // Deshabilita visualmente mientras se guarda
             isSaving ? { opacity: 0.6 } : null,
           ]}
           onPress={onExportPDF}
@@ -402,7 +467,7 @@ export default function HomeScreen({
           <AppText style={styles.buttonText}>EXPORTAR A CSV</AppText>
         </TouchableOpacity>
 
-        {/* Reset de presupuesto */}
+        {/* Reset */}
         <TouchableOpacity
           style={[styles.button, { backgroundColor: colors.danger }]}
           onPress={resetBudget}
@@ -414,11 +479,11 @@ export default function HomeScreen({
   );
 }
 
-// Estilos de la pantalla Home
+// Estilos del HomeScreen
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   center: { justifyContent: "center", alignItems: "center" },
-  // Padding bottom grande para no tapar contenido con el contenedor inferior fijo
+  // paddingBottom grande para evitar que el contenedor inferior tape el contenido
   content: { padding: 16, paddingBottom: 300 },
 
   navButton: {
