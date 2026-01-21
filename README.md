@@ -162,23 +162,23 @@ Búsqueda, actualización y eliminación de nodos
 
 --Funcionalidades evaluables (ideal para calificación)
 
-✔ Uso de arquitectura limpia
+-Uso de arquitectura limpia
 
-✔ Separación dominio / datos / presentación
+-Separación dominio / datos / presentación
 
-✔ Uso de AsyncStorage
+-Uso de AsyncStorage
 
-✔ Casos de uso bien definidos
+-Casos de uso bien definidos
 
-✔ Componentes reutilizables (atoms / molecules / organisms)
+-Componentes reutilizables (atoms / molecules / organisms)
 
-✔ Manejo de estado local
+-Manejo de estado local
 
-✔ Exportación de datos
+-Exportación de datos
 
-✔ Modo oscuro / claro
+-Modo oscuro / claro
 
-✔ Código comentado y legible
+-Código comentado y legible
 
 "Autor"
 
