@@ -147,10 +147,6 @@ function buildHtml(root: BudgetNode) {
         <div>Total general</div>
         <div>${formatMoney(grandTotal)}</div>
       </div>
-
-      <div class="footer">
-        Nota: las hojas muestran su <b>amount</b> y las categorías padre muestran el <b>total calculado</b> (suma de subcategorías).
-      </div>
     </body>
   </html>
   `;
